@@ -117,13 +117,13 @@ impl TValue {
         if self.tag != tags::FLOAT {
             return false;
         }
-        unsafe {self.value.f}.is_nan()
+        unsafe { self.value.f }.is_nan()
     }
 
     pub fn is_zero(&self) -> bool {
         match self.tag {
-            tags::FLOAT => unsafe {self.value.f == 0.0 },
-            tags::INTEGER => unsafe {self.value.i == 0 },
+            tags::FLOAT => unsafe { self.value.f == 0.0 },
+            tags::INTEGER => unsafe { self.value.i == 0 },
             _ => false,
         }
     }
@@ -252,6 +252,14 @@ pub unsafe extern "C" fn tvalue_is_truthy(ptr: *mut TValue) -> bool {
     }
 }
 
+#[export_name = "std::tvalue::get_tag"]
+pub unsafe extern "C" fn tvalue_get_tag(ptr: *mut TValue) -> u8 {
+    let Some(v) = ptr.as_ref() else {
+        return 0;
+    };
+    v.tag
+}
+
 macro_rules! get_or_return {
     ($ptr:ident, $out:ident) => {
         if let Some(v) = $ptr.as_ref() {
@@ -288,9 +296,7 @@ macro_rules! bin_math_op {
         let (l, r, o) = bin_math_prefix!($l, $r, $o);
 
         *o = match (l.tag, r.tag) {
-            (tags::INTEGER, tags::INTEGER) => {
-                TValue::new_int($iop(l.value.i, r.value.i))
-            }
+            (tags::INTEGER, tags::INTEGER) => TValue::new_int($iop(l.value.i, r.value.i)),
             (tags::FLOAT, tags::FLOAT) => {
                 TValue::new_float($fop(l.value.f as f64, r.value.f as f64))
             }
@@ -317,16 +323,18 @@ pub unsafe extern "C" fn tvalue_mul(lhs: *mut TValue, rhs: *mut TValue, out: *mu
 }
 
 fn tvalue_div_(l: &TValue, r: &TValue, o: &mut TValue) {
-    let (l, r) = unsafe { match (l.tag, r.tag) {
-        (tags::INTEGER, tags::INTEGER) => (l.value.i as f64, r.value.i as f64),
-        (tags::INTEGER, tags::FLOAT) => (l.value.i as f64, r.value.f),
-        (tags::FLOAT, tags::INTEGER) => (l.value.f, r.value.i as f64),
-        (tags::FLOAT, tags::FLOAT) => (l.value.f, r.value.f),
-        _ => {
-            *o = TValue::new_bool(false);
-            return;
+    let (l, r) = unsafe {
+        match (l.tag, r.tag) {
+            (tags::INTEGER, tags::INTEGER) => (l.value.i as f64, r.value.i as f64),
+            (tags::INTEGER, tags::FLOAT) => (l.value.i as f64, r.value.f),
+            (tags::FLOAT, tags::INTEGER) => (l.value.f, r.value.i as f64),
+            (tags::FLOAT, tags::FLOAT) => (l.value.f, r.value.f),
+            _ => {
+                *o = TValue::new_bool(false);
+                return;
+            }
         }
-    }};
+    };
     let f = if r == 0.0 || r == -0.0 {
         if l == 0.0 || l == -0.0 {
             -f64::NAN
@@ -356,12 +364,8 @@ pub unsafe extern "C" fn tvalue_floor_div(lhs: *mut TValue, rhs: *mut TValue, ou
     }
     tvalue_div_(l, r, o);
     let f = match o.tag {
-        tags::INTEGER => {
-            o.value.i as f64
-        },
-        tags::FLOAT => {
-            o.value.f
-        }
+        tags::INTEGER => o.value.i as f64,
+        tags::FLOAT => o.value.f,
         _ => return,
     };
     *o = TValue::new_float(f.floor());
@@ -386,9 +390,7 @@ pub unsafe extern "C" fn tvalue_exponent(lhs: *mut TValue, rhs: *mut TValue, out
             let v = (l.value.i as f64).powf(r.value.f);
             TValue::new_float(v)
         }
-        _ => {
-            TValue::new_bool(false)
-        }
+        _ => TValue::new_bool(false),
     };
 }
 
@@ -522,11 +524,11 @@ mod tests {
             let mut lhs = TValue::new_int(l);
             let mut rhs = TValue::new_int(r);
             let mut result = TValue::new_bool(false);
-            
+
             let expected = lua.load(&format!("{}+{}", l, r)).eval().map(|v: i64| {
                 TValue::new_int(v)
             }).unwrap_or_else(|_| TValue::new_bool(false));
-            
+
             unsafe {
                 tvalue_add(&mut lhs, &mut rhs, &mut result);
             }
@@ -544,7 +546,7 @@ mod tests {
             let expected = lua.load(&format!("{}+{}", l, r)).eval().map(|v: f64| {
                 TValue::new_float(v)
             }).unwrap_or_else(|_| TValue::new_bool(false));
-            
+
             unsafe {
                 tvalue_add(&mut lhs, &mut rhs, &mut result);
             }
@@ -561,7 +563,7 @@ mod tests {
             let expected = lua.load(&format!("-({})", l)).eval().map(|v: i64| {
                 TValue::new_int(v)
             }).unwrap_or_else(|_| TValue::new_bool(false));
-            
+
             unsafe {
                 tvalue_negate(&mut lhs, &mut result);
             }
@@ -578,7 +580,7 @@ mod tests {
             let expected = lua.load(&format!("-({})", l)).eval().map(|v: f64| {
                 TValue::new_float(v)
             }).unwrap_or_else(|_| TValue::new_bool(false));
-            
+
             unsafe {
                 tvalue_negate(&mut lhs, &mut result);
             }
@@ -596,7 +598,7 @@ mod tests {
             let expected = lua.load(&format!("({})-({})", l, r)).eval().map(|v: i64| {
                 TValue::new_int(v)
             }).unwrap_or_else(|_| TValue::new_bool(false));
-            
+
             unsafe {
                 tvalue_sub(&mut lhs, &mut rhs, &mut result);
             }
@@ -614,7 +616,7 @@ mod tests {
             let expected = lua.load(&format!("({})-({})", l, r)).eval().map(|v: f64| {
                 TValue::new_float(v)
             }).unwrap_or_else(|_| TValue::new_bool(false));
-            
+
             unsafe {
                 tvalue_sub(&mut lhs, &mut rhs, &mut result);
             }
@@ -632,7 +634,7 @@ mod tests {
             let expected = lua.load(&format!("{}*{}", l, r)).eval().map(|v: i64| {
                 TValue::new_int(v)
             }).unwrap_or_else(|_| TValue::new_bool(false));
-            
+
             unsafe {
                 tvalue_mul(&mut lhs, &mut rhs, &mut result);
             }
@@ -650,7 +652,7 @@ mod tests {
             let expected = lua.load(&format!("{}*{}", l, r)).eval().map(|v: f64| {
                 TValue::new_float(v)
             }).unwrap_or_else(|_| TValue::new_bool(false));
-            
+
             unsafe {
                 tvalue_mul(&mut lhs, &mut rhs, &mut result);
             }
@@ -668,7 +670,7 @@ mod tests {
             let expected = lua.load(&format!("{}/{}", l, r)).eval().map(|v: f64| {
                 TValue::new_float(v)
             }).unwrap_or_else(|_| TValue::new_bool(false));
-            
+
             unsafe {
                 tvalue_div(&mut lhs, &mut rhs, &mut result);
             }
@@ -707,7 +709,7 @@ mod tests {
             let expected = lua.load(&format!("{}//{}", l, r)).eval().map(|v: i64| {
                 TValue::new_int(v)
             }).unwrap_or_else(|_| TValue::new_bool(false));
-            
+
             unsafe {
                 tvalue_floor_div(&mut lhs, &mut rhs, &mut result);
             }
@@ -717,18 +719,17 @@ mod tests {
 
     #[test]
     fn float_floor_div() {
-
         let lua = mlua::Lua::new();
-        
+
         proptest::proptest!(|(l: f64, r: f64)| {
             let mut lhs = TValue::new_float(l);
             let mut rhs = TValue::new_float(r);
             let mut result = TValue::new_bool(false);
-            
+
             unsafe {
                 tvalue_floor_div(&mut lhs, &mut rhs, &mut result);
             }
-            
+
             let expected = lua.load(format!("{}//{}", l, r, )).eval().map(|v: f64| {
                 TValue::new_float(v)
             }).unwrap_or_else(|_| TValue::new_bool(false));
@@ -750,7 +751,7 @@ mod tests {
             let expected = lua.load(&format!("({})^({})", l, r)).eval().map(|v: f64| {
                 TValue::new_float(v)
             }).unwrap_or_else(|_| TValue::new_bool(false));
-            
+
             unsafe {
                 tvalue_exponent(&mut lhs, &mut rhs, &mut result);
             }
@@ -760,18 +761,17 @@ mod tests {
 
     #[test]
     fn float_floor_exp() {
-
         let lua = mlua::Lua::new();
-        
+
         proptest::proptest!(|(l: f64, r: f64)| {
             let mut lhs = TValue::new_float(l);
             let mut rhs = TValue::new_float(r);
             let mut result = TValue::new_bool(false);
-            
+
             unsafe {
                 tvalue_exponent(&mut lhs, &mut rhs, &mut result);
             }
-            
+
             let expected = lua.load(format!("({})^({})", l, r, )).eval().map(|v: f64| {
                 TValue::new_float(v)
             }).unwrap_or_else(|_| TValue::new_bool(false));
