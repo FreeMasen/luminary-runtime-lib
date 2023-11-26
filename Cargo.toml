@@ -1,0 +1,15 @@
+[package]
+name = "luminary-runtime-lib"
+version = "0.1.0"
+edition = "2021"
+lto = "fat"
+
+[dependencies]
+
+[dev-dependencies]
+insta = "1.34"
+mlua = { version = "0.9", features = ["lua53"]}
+proptest = "1.4"
+
+[lib]
+crate-type = ["cdylib"]
